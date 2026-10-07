@@ -90,6 +90,7 @@ async function imageAsWebp(file: File) {
 
 function AdminPage() {
   const { user, isPending } = useCurrentUserState();
+  const userId = user?.id ?? null;
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [localAdminBypass, setLocalAdminBypass] = useState<boolean | null>(null);
@@ -124,7 +125,7 @@ function AdminPage() {
 
   useEffect(() => {
     if (localAdminBypass === null || (!localAdminBypass && isPending)) return;
-    if (!user && !localAdminBypass) {
+    if (!userId && !localAdminBypass) {
       setLoading(false);
       return;
     }
@@ -143,7 +144,7 @@ function AdminPage() {
     return () => {
       active = false;
     };
-  }, [user, isPending, localAdminBypass]);
+  }, [userId, isPending, localAdminBypass]);
 
   const projects = dashboard?.projects ?? noProjects;
   const messages = dashboard?.messages ?? noMessages;
