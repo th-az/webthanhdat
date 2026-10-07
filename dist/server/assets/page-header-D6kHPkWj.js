@@ -1,0 +1,51 @@
+import { _ as site } from "./site-layout-h5ct0S2e.js";
+import { Link } from "@tanstack/react-router";
+import { jsx, jsxs } from "react/jsx-runtime";
+//#region src/components/page-header.tsx
+function PageHeader({ title, script, subtitle, kicker = `${site.name} · PORTFOLIO` }) {
+	return /* @__PURE__ */ jsx("section", {
+		className: "relative border-b border-line bg-paper px-4 py-8 text-ink md:px-8 md:py-12",
+		children: /* @__PURE__ */ jsxs("div", {
+			className: "mx-auto max-w-4xl",
+			children: [/* @__PURE__ */ jsxs("div", {
+				className: "flex items-center gap-2 font-display text-xs tracking-[0.25em] text-wine/80",
+				children: [
+					/* @__PURE__ */ jsx(Link, {
+						to: "/",
+						className: "hover:underline",
+						children: "TRANG CHỦ"
+					}),
+					/* @__PURE__ */ jsx("span", { children: "/" }),
+					/* @__PURE__ */ jsx("span", {
+						className: "text-wine",
+						children: title
+					})
+				]
+			}), /* @__PURE__ */ jsxs("div", {
+				className: "mt-4",
+				children: [
+					/* @__PURE__ */ jsx("p", {
+						className: "font-display text-xs tracking-[0.28em] text-wine uppercase",
+						children: kicker
+					}),
+					/* @__PURE__ */ jsxs("div", {
+						className: "relative mt-1",
+						children: [/* @__PURE__ */ jsx("h1", {
+							className: "font-display text-4xl font-bold tracking-tight text-wine sm:text-5xl md:text-6xl",
+							children: title
+						}), script ? /* @__PURE__ */ jsx("span", {
+							className: "font-script absolute -top-4 left-44 text-script leading-none text-wine/40 sm:left-64 md:left-80 pointer-events-none",
+							children: script
+						}) : null]
+					}),
+					/* @__PURE__ */ jsx("p", {
+						className: "mt-3 max-w-2xl text-base leading-relaxed text-ink/75 sm:text-lg",
+						children: subtitle
+					})
+				]
+			})]
+		})
+	});
+}
+//#endregion
+export { PageHeader as t };

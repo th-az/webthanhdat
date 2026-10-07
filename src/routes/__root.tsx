@@ -32,6 +32,15 @@ export const Route = createRootRoute({
   component: () => (
     <html lang="vi" className="antialiased" suppressHydrationWarning>
       <head>
+        <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-57NGVK4W99"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-57NGVK4W99');
+</script>
         <HeadContent />
       </head>
       <body className="bg-wine text-cream font-sans">
