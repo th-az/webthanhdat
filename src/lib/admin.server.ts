@@ -115,7 +115,7 @@ export async function getAdminDashboard(userId: string) {
         message,
         is_read as "isRead",
         is_archived as "isArchived",
-        created_at::text as "createdAt"
+        cast(created_at as text) as "createdAt"
       from contact_messages
       where lower(recipient_email) = ${ADMIN_EMAIL}
       order by created_at desc
@@ -129,7 +129,7 @@ export async function getAdminDashboard(userId: string) {
         m.message,
         m.is_read as "isRead",
         m.is_archived as "isArchived",
-        m.created_at::text as "createdAt"
+        cast(m.created_at as text) as "createdAt"
       from contact_messages m
       inner join "user" u on lower(u.email) = lower(m.recipient_email)
       where u.id = ${userId} and lower(u.email) = ${ADMIN_EMAIL}
@@ -149,11 +149,11 @@ export async function saveAdminProject(userId: string, project: Project) {
   const sql = await getSql();
   const rows = await sql<{ id: string }>`
     insert into admin_projects (id, owner_user_id, project_data, is_published, updated_at)
-    values (${project.id}, ${userId}, ${JSON.stringify(project)}::jsonb, true, now())
+    values (${project.id}, ${userId}, ${JSON.stringify(project)}, true, CURRENT_TIMESTAMP)
     on conflict (id) do update set
       project_data = excluded.project_data,
       is_published = true,
-      updated_at = now()
+      updated_at = CURRENT_TIMESTAMP
     where admin_projects.owner_user_id = excluded.owner_user_id
     returning id
   `;
@@ -171,11 +171,11 @@ export async function setAdminProjectPublished(
   const sql = await getSql();
   const rows = await sql<{ id: string }>`
     insert into admin_projects (id, owner_user_id, project_data, is_published, updated_at)
-    values (${project.id}, ${userId}, ${JSON.stringify(project)}::jsonb, ${isPublished}, now())
+    values (${project.id}, ${userId}, ${JSON.stringify(project)}, ${isPublished}, CURRENT_TIMESTAMP)
     on conflict (id) do update set
       project_data = excluded.project_data,
       is_published = excluded.is_published,
-      updated_at = now()
+      updated_at = CURRENT_TIMESTAMP
     where admin_projects.owner_user_id = excluded.owner_user_id
     returning id
   `;

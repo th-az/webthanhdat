@@ -30,19 +30,21 @@ import { betterAuth } from "better-auth";
 import { bearer, genericOAuth } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { getCookie } from "@tanstack/react-start/server";
-import { randomBytes } from "node:crypto";
-import { Pool } from "pg";
+import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import { drizzle } from "drizzle-orm/d1";
 import { ensureDbReady, getPglite } from "../db";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GOOGLE_PROVIDER, GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
+import { authSchema } from "./schema.d1";
 import {
   GROK_ISSUER_DEFAULT,
   PREVIEW_ALLOWED_HOSTS,
   PREVIEW_CLIENT_ID,
   PREVIEW_CLIENT_SECRET,
 } from "./preview";
+import { getD1Database, getRuntimeEnv } from "../runtime-env.server.ts";
 
 // Kick (and share) PGLite bootstrap as soon as the auth server module loads.
 void ensureDbReady();
@@ -57,13 +59,18 @@ const globalAuthRef = globalThis as typeof globalThis & {
   __grokAuthPreviewSecret__?: string;
 };
 function previewAuthSecret(): string {
-  globalAuthRef.__grokAuthPreviewSecret__ ??= randomBytes(32).toString("hex");
+  if (!globalAuthRef.__grokAuthPreviewSecret__) {
+    const random = crypto.getRandomValues(new Uint8Array(32));
+    globalAuthRef.__grokAuthPreviewSecret__ = Array.from(random, (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  }
   return globalAuthRef.__grokAuthPreviewSecret__;
 }
 
 /** Read an env var, treating empty/whitespace as unset. */
 const env = (key: string): string | undefined => {
-  const value = process.env[key]?.trim();
+  const value = getRuntimeEnv(key)?.trim();
   return value ? value : undefined;
 };
 
@@ -88,11 +95,7 @@ export const authConfigured =
     ? Boolean(googleClientId && googleClientSecret)
     : Boolean(grokClientId && grokClientSecret));
 
-if (
-  !authDisabled &&
-  directGoogleAuth &&
-  (!googleClientId || !googleClientSecret)
-) {
+if (!authDisabled && directGoogleAuth && (!googleClientId || !googleClientSecret)) {
   throw new Error(
     "VITE_DIRECT_GOOGLE_AUTH is enabled but GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is missing.",
   );
@@ -139,6 +142,12 @@ const trustedOrigins: string[] = explicitBaseURL
     ];
 
 const databaseUrl = env("DATABASE_URL") ?? env("NETLIFY_DB_URL");
+const d1Database = getD1Database();
+const configuredAuthSecret = env("BETTER_AUTH_SECRET");
+const authSecret = configuredAuthSecret ?? (d1Database ? undefined : previewAuthSecret());
+if (!authSecret) {
+  throw new Error("BETTER_AUTH_SECRET is required when using Cloudflare D1.");
+}
 
 // Static broker OAuth endpoints are only used by the live preview.
 const issuerBase = grokIssuer.replace(/\/+$/, "");
@@ -146,14 +155,18 @@ const grokAuthorizationUrl = `${issuerBase}/api/auth/oauth2/authorize`;
 const grokTokenUrl = `${issuerBase}/api/auth/oauth2/token`;
 const grokUserInfoUrl = `${issuerBase}/api/auth/oauth2/userinfo`;
 
-// Real Postgres when a database URL is set (deployed apps), else the app's
-// embedded PGLite (preview) via a Kysely dialect — so Better Auth persists to the
-// SAME DB as app data, including email/password users. Both use the Better Auth
-// schema from `migrations/auth/0001_auth.sql`, copied into `migrations/` when
-// the app turns sign-in on.
-const database = databaseUrl
-  ? new Pool({ connectionString: databaseUrl })
-  : { dialect: pgliteDialect(() => getPglite()), type: "postgres" as const };
+// Cloudflare D1 uses the SQLite Drizzle adapter; Netlify keeps PostgreSQL and
+// the live preview keeps the shared PGLite database.
+const database = d1Database
+  ? drizzleAdapter(drizzle(d1Database), {
+      provider: "sqlite",
+      schema: authSchema,
+      camelCase: true,
+      transaction: false,
+    })
+  : databaseUrl
+    ? new (await import("pg")).Pool({ connectionString: databaseUrl })
+    : { dialect: pgliteDialect(() => getPglite()), type: "postgres" as const };
 const socialProviders =
   directGoogleAuth && googleClientId && googleClientSecret
     ? {
@@ -169,33 +182,34 @@ export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
 // Built separately so the `betterAuth({...})` call stays easy to edit without
 // breaking brackets (models often trip on the conditional plugin spread).
-const grokOAuthPlugin = authConfigured && !directGoogleAuth
-  ? genericOAuth({
-      config: GROK_PROVIDERS.map(({ providerId, idp }) => ({
-        providerId,
-        clientId: grokClientId as string,
-        clientSecret: grokClientSecret as string,
-        // Prefer static endpoints over `discoveryUrl` so initiating (and
-        // completing) OAuth does not wait on a broker discovery fetch.
-        authorizationUrl: grokAuthorizationUrl,
-        tokenUrl: grokTokenUrl,
-        userInfoUrl: grokUserInfoUrl,
-        scopes: ["openid", "profile", "email"],
-        // `prompt: "login"` forces the broker to re-authenticate against the
-        // upstream on every sign-in instead of silently reusing an existing
-        // broker session. Combined with the broker sending Google
-        // `prompt=select_account`, the user always gets the account chooser
-        // and can pick (or switch) which account to sign in with.
-        authorizationUrlParams: { idp, prompt: "login" },
-      })),
-    })
-  : null;
+const grokOAuthPlugin =
+  authConfigured && !directGoogleAuth
+    ? genericOAuth({
+        config: GROK_PROVIDERS.map(({ providerId, idp }) => ({
+          providerId,
+          clientId: grokClientId as string,
+          clientSecret: grokClientSecret as string,
+          // Prefer static endpoints over `discoveryUrl` so initiating (and
+          // completing) OAuth does not wait on a broker discovery fetch.
+          authorizationUrl: grokAuthorizationUrl,
+          tokenUrl: grokTokenUrl,
+          userInfoUrl: grokUserInfoUrl,
+          scopes: ["openid", "profile", "email"],
+          // `prompt: "login"` forces the broker to re-authenticate against the
+          // upstream on every sign-in instead of silently reusing an existing
+          // broker session. Combined with the broker sending Google
+          // `prompt=select_account`, the user always gets the account chooser
+          // and can pick (or switch) which account to sign in with.
+          authorizationUrlParams: { idp, prompt: "login" },
+        })),
+      })
+    : null;
 
 export const auth = betterAuth({
   baseURL,
-  // Deployed apps inject BETTER_AUTH_SECRET. Preview: process-stable secret on
-  // globalThis so HMR doesn't invalidate PGLite-backed sessions (see above).
-  secret: env("BETTER_AUTH_SECRET") ?? previewAuthSecret(),
+  // Preview-only secret generation avoids Cloudflare's prohibition on global
+  // crypto calls; deployed D1 workers must receive a secret binding.
+  secret: authSecret,
   database,
   ...(socialProviders ? { socialProviders } : {}),
 

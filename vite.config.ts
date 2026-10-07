@@ -2,6 +2,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin } from "vite";
 import { defineConfig } from "vite";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import netlify from "@netlify/vite-plugin-tanstack-start";
 import viteReact from "@vitejs/plugin-react";
@@ -142,38 +143,64 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+function cloudflareRuntimePlugin(): Plugin {
+  return {
+    name: "app-builder:cloudflare-runtime",
+    enforce: "pre",
+    resolveId(source) {
+      if (source.endsWith("/runtime-env.server.ts")) {
+        return join(import.meta.dirname, "src/lib/runtime-env.cloudflare.ts");
+      }
+      if (source === "@electric-sql/pglite") {
+        return join(import.meta.dirname, "src/lib/pglite-unavailable.cloudflare.ts");
+      }
+      return null;
+    },
+  };
+}
+
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
-export default defineConfig(({ command, isPreview }) => ({
-  server: {
-    host: "0.0.0.0",
-    port: 8080,
-    strictPort: true,
-  },
-  preview: {
-    host: "127.0.0.1",
-    port: 8081,
-    strictPort: true,
-  },
-  resolve: { tsconfigPaths: true },
-  plugins: [
-    pgliteBootstrapPlugin(),
-    // Before tanstackStart so /auth/popup never falls through to the SPA.
-    authPopupPlugin(),
-    // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
-    appEnvPlugin(),
-    // PWA head + ?install=1 tutorial page; runs before Start/Netlify.
-    grokPwaPlugin(),
-    tailwindcss(),
-    tanstackStart(),
-    netlify({
-      dev: {
-        edgeFunctions: {
-          enabled: false,
-        },
-      },
-    }),
-    viteReact(),
-  ],
-}));
+export default defineConfig(({ command, isPreview, mode }) => {
+  const cloudflareTarget = mode === "cloudflare";
+
+  return {
+    server: {
+      host: "0.0.0.0",
+      port: 8080,
+      strictPort: true,
+    },
+    preview: {
+      host: "127.0.0.1",
+      port: 8081,
+      strictPort: true,
+    },
+    resolve: { tsconfigPaths: true },
+    plugins: [
+      ...(cloudflareTarget ? [cloudflareRuntimePlugin()] : []),
+      ...(cloudflareTarget ? [cloudflare({ viteEnvironment: { name: "ssr" } })] : []),
+      pgliteBootstrapPlugin(),
+      // Before tanstackStart so /auth/popup never falls through to the SPA.
+      ...(!cloudflareTarget ? [authPopupPlugin()] : []),
+      // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
+      appEnvPlugin(),
+      // PWA head + ?install=1 tutorial page; runs before Start/Netlify.
+      grokPwaPlugin(),
+      tailwindcss(),
+      tanstackStart(),
+      ...(!cloudflareTarget
+        ? [
+            netlify({
+              dev: {
+                edgeFunctions: {
+                  enabled: false,
+                },
+              },
+            }),
+          ]
+        : []),
+      viteReact(),
+    ],
+  };
+});

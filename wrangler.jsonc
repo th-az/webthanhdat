@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "webthanhdat",
+  "main": "@tanstack/react-start/server-entry",
+  "compatibility_date": "2026-10-07",
+  "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+  },
+  "vars": {
+    "NODE_ENV": "production",
+    "VITE_AUTH_ENABLED": "true",
+    "VITE_DIRECT_GOOGLE_AUTH": "true",
+    "BETTER_AUTH_URL": "https://thanhdat2806.id.vn",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "webthanhdat",
+      "database_id": "b2858556-36a0-4b77-893a-63d77d03aae0",
+      "migrations_dir": "migrations/d1",
+    },
+  ],
+}

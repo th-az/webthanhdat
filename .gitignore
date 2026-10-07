@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .netlify/
+.wrangler/
 .project_id
 .github_repo
 .env

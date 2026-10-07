@@ -1,5 +1,6 @@
 import { getRequest } from "@tanstack/react-start/server";
 import { dbSource } from "@/lib/db";
+import { getRuntimeEnv } from "./runtime-env.server.ts";
 
 export const LOCAL_ADMIN_USER_ID = "local-development-admin";
 
@@ -13,7 +14,11 @@ function isLoopbackHost(host: string) {
 }
 
 export function isLocalAdminBypassAllowed() {
-  if (process.env.NODE_ENV !== "development" || !import.meta.env.DEV || dbSource !== "pglite") {
+  if (
+    getRuntimeEnv("NODE_ENV") !== "development" ||
+    !import.meta.env.DEV ||
+    dbSource !== "pglite"
+  ) {
     return false;
   }
 

@@ -1,18 +1,16 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { getD1Database, getRuntimeEnv } from "./runtime-env.server.ts";
 
 /** Which database backend is active. */
-export type DbSource = "postgres" | "pglite";
+export type DbSource = "d1" | "postgres" | "pglite";
 
 // Empty database URL values must mean
 // "unset" — otherwise production would silently run on the PGLite fallback.
-const rawDatabaseUrl =
-  typeof process !== "undefined"
-    ? process.env.DATABASE_URL?.trim()
-      ? process.env.DATABASE_URL
-      : process.env.NETLIFY_DB_URL
-    : undefined;
-const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+const rawDatabaseUrl = getRuntimeEnv("DATABASE_URL")?.trim()
+  ? getRuntimeEnv("DATABASE_URL")
+  : getRuntimeEnv("NETLIFY_DB_URL");
+const databaseUrl = rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+const d1Database = getD1Database();
 
 /**
  * Active backend: real Postgres when a database URL is set (deployed / configured
@@ -20,7 +18,7 @@ const databaseUrl =
  * the app has a working database even with nothing configured — the live preview
  * included. Set `DATABASE_URL` or `NETLIFY_DB_URL` to use a persistent database.
  */
-export const dbSource: DbSource = databaseUrl ? "postgres" : "pglite";
+export const dbSource: DbSource = d1Database ? "d1" : databaseUrl ? "postgres" : "pglite";
 
 /**
  * Minimal shared SQL surface, satisfied by Postgres and PGLite. Both the
@@ -31,14 +29,8 @@ export const dbSource: DbSource = databaseUrl ? "postgres" : "pglite";
  *   const rows2 = await sql.query("select * from todos where id = $1", [id]);
  */
 export interface Sql {
-  <T = Record<string, unknown>>(
-    strings: TemplateStringsArray,
-    ...values: unknown[]
-  ): Promise<T[]>;
-  query<T = Record<string, unknown>>(
-    text: string,
-    params?: unknown[],
-  ): Promise<T[]>;
+  <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 }
 
 /**
@@ -72,16 +64,20 @@ const OID_INTERVAL = 1186;
 const identity = (v: string) => v;
 
 type Run = <T>(text: string, params: unknown[]) => Promise<T[]>;
+type Placeholder = (index: number) => string;
+type D1DatabaseValue = string | number | boolean | ArrayBuffer | null;
 
 /** Wrap a query runner in the tagged-template + `.query()` `Sql` surface. */
-function toSql(run: Run): Sql {
+function toSql(run: Run, placeholder: Placeholder = (index) => `$${index}`): Sql {
   const sql = (async <T = Record<string, unknown>>(
     strings: TemplateStringsArray,
     ...values: unknown[]
   ): Promise<T[]> => {
-    // Rebuild with $1, $2, … placeholders so values stay parameterized.
+    // Rebuild with backend-specific placeholders so values stay parameterized.
     let text = strings[0];
-    for (let i = 0; i < values.length; i += 1) text += `$${i + 1}${strings[i + 1]}`;
+    for (let i = 0; i < values.length; i += 1) {
+      text += `${placeholder(i + 1)}${strings[i + 1]}`;
+    }
     return run<T>(text, values);
   }) as unknown as Sql;
   sql.query = <T = Record<string, unknown>>(text: string, params: unknown[] = []) =>
@@ -106,6 +102,52 @@ function createPostgresSql(): Promise<Sql> {
     throw err;
   });
   return globalRef.__pgSqlPromise__;
+}
+
+function normalizeD1Row(row: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...row };
+  if (typeof normalized.project_data === "string") {
+    normalized.project_data = JSON.parse(normalized.project_data);
+  }
+  for (const key of ["is_published", "is_read", "is_archived", "isRead", "isArchived"]) {
+    if (key in normalized && normalized[key] !== null) {
+      normalized[key] = normalized[key] === 1 || normalized[key] === true;
+    }
+  }
+  return normalized;
+}
+
+function toD1DatabaseValue(value: unknown): D1DatabaseValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value instanceof ArrayBuffer
+  ) {
+    return value;
+  }
+  if (value instanceof Date) return value.getTime();
+  throw new TypeError(`Unsupported D1 parameter type: ${typeof value}`);
+}
+
+function createD1Sql(): Sql {
+  if (!d1Database) {
+    throw new Error("D1 database binding is unavailable");
+  }
+  return toSql(
+    async <T>(text: string, params: unknown[]) => {
+      const result = await d1Database
+        .prepare(text)
+        .bind(...params.map(toD1DatabaseValue))
+        .all<Record<string, unknown>>();
+      if (!result.success) {
+        throw new Error(`D1 query failed: ${result.error ?? "unknown error"}`);
+      }
+      return result.results.map(normalizeD1Row) as T[];
+    },
+    (index) => `?${index}`,
+  );
 }
 
 async function createPgliteSql(): Promise<Sql> {
@@ -145,9 +187,7 @@ async function createPgliteSql(): Promise<Sql> {
       import: "default",
       eager: true,
     }) as Record<string, string>;
-    const doneRows = await pg.query<{ name: string }>(
-      "select name from _migrations",
-    );
+    const doneRows = await pg.query<{ name: string }>("select name from _migrations");
     const done = doneRows.rows.map((r) => r.name);
     for (const { name, path } of pendingMigrations(Object.keys(migrations), done)) {
       // Apply + record atomically (parity with scripts/migrate.mjs) so a failed
@@ -179,7 +219,9 @@ async function createSql(): Promise<Sql> {
         "or a server route loader, never from client code.",
     );
   }
-  return dbSource === "postgres" ? createPostgresSql() : createPgliteSql();
+  if (dbSource === "d1") return createD1Sql();
+  if (dbSource === "postgres") return createPostgresSql();
+  return createPgliteSql();
 }
 
 /**

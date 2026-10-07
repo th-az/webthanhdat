@@ -1,5 +1,7 @@
+import { getRuntimeEnv } from "./runtime-env.server.ts";
+
 export function env(key: string): string | undefined {
-  const v = process.env[key]?.trim();
+  const v = getRuntimeEnv(key)?.trim();
   return v || undefined;
 }
 

@@ -50,3 +50,35 @@ Netlify during deployment. Database compute and bandwidth use team credits.
 
 After configuring the Google variables, trigger a production deploy and verify
 that sign-in works with `dat206kd@gmail.com` before managing content in `/admin`.
+
+## Cloudflare migration
+
+The Cloudflare Worker build is configured in `wrangler.jsonc`; the normal
+development and Netlify build paths remain unchanged. Cloudflare D1 is a fresh
+database; no data has been copied from Netlify. Run `npm run build:cloudflare`
+to build the Worker. The GitHub deployment workflow applies D1 migrations
+before deploying.
+
+Before deploying:
+
+1. Add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `BETTER_AUTH_SECRET` as
+   Worker secrets using Wrangler or the Cloudflare dashboard. Keep the existing
+   Google OAuth callback URL:
+   `https://thanhdat2806.id.vn/api/auth/callback/google`.
+2. Add `CLOUDFLARE_API_TOKEN` (Workers and D1 edit permissions) and
+   `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions repository secrets.
+3. Deploy to the Worker preview URL and verify D1-backed pages, Google sign-in,
+   and `/admin` before changing the domain's DNS. Import and review the existing
+   DNS records in Cloudflare first; leave Netlify available as rollback until
+   the custom-domain deployment is verified.
+4. After the Worker and its secrets are verified, set the
+   `CLOUDFLARE_DEPLOY_ENABLED` repository variable to `true` to enable automatic
+   deployment on pushes to `main`.
+
+The empty `webthanhdat` D1 database has been created in Cloudflare, its
+migrations have been applied, and it is bound in `wrangler.jsonc`. A
+`BETTER_AUTH_SECRET` has been generated directly in Cloudflare. Production
+deployment remains gated until Google OAuth credentials and GitHub Actions
+deployment secrets are configured and the Worker is verified. No DNS or
+nameserver changes have been made; the existing Netlify site remains the live
+host and rollback.

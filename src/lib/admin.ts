@@ -1,4 +1,5 @@
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
+import { getRuntimeEnv } from "./runtime-env.server.ts";
 import { z } from "zod";
 
 const adminMiddleware = createMiddleware({ type: "function" })
@@ -83,10 +84,11 @@ export const getAdminSignInAvailability = createServerFn({
   const request = getRequest();
   const host = request?.headers.get("host")?.split(":")[0]?.toLowerCase() ?? "";
   const appOAuthClientConfigured = Boolean(
-    (process.env.VITE_DIRECT_GOOGLE_AUTH?.trim() === "true" &&
-      process.env.GOOGLE_CLIENT_ID?.trim() &&
-      process.env.GOOGLE_CLIENT_SECRET?.trim()) ||
-    (process.env.GROK_AUTH_CLIENT_ID?.trim() && process.env.GROK_AUTH_CLIENT_SECRET?.trim()),
+    (getRuntimeEnv("VITE_DIRECT_GOOGLE_AUTH")?.trim() === "true" &&
+      getRuntimeEnv("GOOGLE_CLIENT_ID")?.trim() &&
+      getRuntimeEnv("GOOGLE_CLIENT_SECRET")?.trim()) ||
+      (getRuntimeEnv("GROK_AUTH_CLIENT_ID")?.trim() &&
+        getRuntimeEnv("GROK_AUTH_CLIENT_SECRET")?.trim()),
   );
   const isGrokPreview = host.endsWith(".grok-sandbox.com");
   const { isLocalAdminBypassAllowed } = await import("@/lib/admin-access.server");

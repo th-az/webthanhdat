@@ -1,6 +1,7 @@
 import { getRequest } from "@tanstack/react-start/server";
 import { gateIdentityEnabled } from "./gate-identity.server";
 import { auth, authConfigured } from "./server";
+import { getD1Database, getRuntimeEnv } from "../runtime-env.server.ts";
 
 /**
  * Server-side session resolution (server-only).
@@ -14,7 +15,9 @@ import { auth, authConfigured } from "./server";
 
 /** True when a real database is configured server-side. */
 const databaseConfigured = Boolean(
-  process.env.DATABASE_URL?.trim() || process.env.NETLIFY_DB_URL?.trim(),
+  getD1Database() ||
+  getRuntimeEnv("DATABASE_URL")?.trim() ||
+  getRuntimeEnv("NETLIFY_DB_URL")?.trim(),
 );
 
 /** Re-export so callers can branch on it without importing `server.ts`. */
@@ -24,7 +27,7 @@ if (databaseConfigured && !authConfigured) {
   console.error(
     "[auth] A database URL is set but auth is disabled (VITE_AUTH_ENABLED=false) " +
       "— requireUserId() will reject every request (fail closed) rather than " +
-      "share one dev user on a real database.",
+      "share one dev user on a persistent database.",
   );
 }
 
@@ -56,9 +59,7 @@ export type VerifiedUser = { id: string; email: string | null };
  * as a bearer token, which we present as `Authorization: Bearer …` (the `bearer`
  * plugin resolves it). When deployed no token is passed and the cookie is used.
  */
-export async function getSessionUser(
-  bearerToken?: string,
-): Promise<VerifiedUser | null> {
+export async function getSessionUser(bearerToken?: string): Promise<VerifiedUser | null> {
   if (!authConfigured && !gateIdentityEnabled()) return null;
   const request = getRequest();
   if (!request) return null;
@@ -78,17 +79,17 @@ export async function getSessionUser(
  * - Auth enabled -> the verified session user id; throws
  *   `UnauthorizedError` when signed out. Works in the sandbox preview too (real
  *   sign-in via the baked preview client).
- * - Auth disabled (`VITE_AUTH_ENABLED=false`) + a database URL set -> throw (fail
- *   closed): one shared dev user on a real database would let every visitor
- *   read/write everyone's rows.
- * - Auth disabled + no database -> the shared dev user id.
+ * - Auth disabled (`VITE_AUTH_ENABLED=false`) + a persistent database -> throw
+ *   (fail closed): one shared dev user would let every visitor read/write all
+ *   rows.
+ * - Auth disabled + no persistent database -> the shared dev user id.
  */
 export async function requireUserId(bearerToken?: string): Promise<string> {
   if (!authConfigured && !gateIdentityEnabled()) {
     if (databaseConfigured) {
       throw new Error(
-        "Auth is disabled (VITE_AUTH_ENABLED=false) but a database URL is set — " +
-          "refusing to fall back to the shared dev user against a real database.",
+        "Auth is disabled (VITE_AUTH_ENABLED=false) but a persistent database is set — " +
+          "refusing to fall back to the shared dev user.",
       );
     }
     return DEV_USER_ID;
