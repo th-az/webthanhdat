@@ -5,20 +5,24 @@ import { ProjectDialog } from "@/components/project-dialog";
 import { SiteHero } from "@/components/site-hero";
 import { SiteLayout } from "@/components/site-layout";
 import { Reveal, TiltStage } from "@/components/motion";
+import { listPublishedProjects } from "@/lib/admin";
 import {
   identityBars,
   mosaic,
   pillars,
-  projects,
   roadmap,
   site,
   stack,
   type Project,
 } from "@/lib/site";
 
-export const Route = createFileRoute("/")({ component: Home });
+export const Route = createFileRoute("/")({
+  loader: () => listPublishedProjects(),
+  component: Home,
+});
 
 function Home() {
+  const projects = Route.useLoaderData();
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const featuredProjects = projects.slice(0, 3);
 
@@ -142,9 +146,9 @@ function Home() {
                   >
                     <div>
                       <div className="relative aspect-[16/10] overflow-hidden bg-wine-deep">
-                        {"video" in p && (p as { video?: string }).video ? (
+                        {p.video && /\.(mp4|webm|ogg)(\?.*)?$/i.test(p.video) ? (
                           <video
-                            src={(p as { video: string }).video}
+                            src={p.video}
                             className="h-full w-full object-cover"
                             autoPlay
                             muted

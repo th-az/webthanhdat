@@ -48,7 +48,23 @@ export const audienceNotes = [
   "Kết hợp tư duy kinh doanh với kỹ thuật để ra quyết định rõ ràng.",
 ] as const;
 
-export const projects = [
+export type Project = {
+  id: string;
+  name: string;
+  subtitle: string;
+  description: string;
+  stack: string[];
+  demo: string;
+  github: string;
+  status: string;
+  image: string;
+  imagePos: string;
+  video?: string;
+  category: "ai" | "web" | "business";
+  features: string[];
+};
+
+export const projects: Project[] = [
   {
     id: "datai",
     name: "ĐạtAI",
@@ -152,9 +168,7 @@ export const projects = [
       "Tổng hợp bài học ứng dụng cho sinh viên ngành Quản trị kinh doanh PTIT.",
     ],
   },
-] as const;
-
-export type Project = (typeof projects)[number];
+];
 
 export const pillars = [
   {

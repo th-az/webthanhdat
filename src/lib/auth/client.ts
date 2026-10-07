@@ -1,7 +1,7 @@
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
-import { GROK_PROVIDERS } from "./providers";
+import { GOOGLE_PROVIDER, GROK_PROVIDERS } from "./providers";
 
 /**
  * Better Auth client for this React SPA (browser-side).
@@ -38,7 +38,10 @@ export const authClient = createAuthClient({
 export const authEnabled = import.meta.env.VITE_AUTH_ENABLED !== "false";
 
 /** The upstream providers to render sign-in buttons for. */
-export { GROK_PROVIDERS };
+const directGoogleAuth = import.meta.env.VITE_DIRECT_GOOGLE_AUTH === "true";
+export const SIGN_IN_PROVIDERS = directGoogleAuth
+  ? [GOOGLE_PROVIDER]
+  : GROK_PROVIDERS;
 
 // ── Live-preview bearer token ────────────────────────────────────────────────
 // The embedded preview iframe has partitioned cookies, so we keep the session's
@@ -106,7 +109,10 @@ export async function signIn(
   // Open the popup SYNCHRONOUSLY on the user gesture — before any await
   // (including signOut). Awaiting first drops user-gesture privilege in some
   // browsers when the opener is a cross-origin live-preview iframe.
-  const popup = inLivePreview() ? openSignInPopup(providerId) : null;
+  const popup =
+    inLivePreview() && !directGoogleAuth
+      ? openSignInPopup(providerId)
+      : null;
 
   // Clear any prior session so switching providers actually switches identity.
   // Bounded because the popup is already open — a request that never settles
@@ -119,6 +125,21 @@ export async function signIn(
     requestSignOut: () => authClient.signOut(),
     clearToken: () => setBearerToken(null),
   });
+
+  if (directGoogleAuth && providerId === GOOGLE_PROVIDER.providerId) {
+    const { data, error } = await authClient.signIn.social({
+      provider: "google",
+      callbackURL,
+      errorCallbackURL,
+      disableRedirect: true,
+    });
+    if (error) throw new Error(error.message ?? "Sign-in failed");
+    if (data?.url) {
+      window.location.href = data.url;
+      return;
+    }
+    throw new Error("Google did not return a sign-in URL.");
+  }
 
   if (inLivePreview()) {
     if (!popup) throw new Error("Pop-up blocked — allow pop-ups for sign-in");

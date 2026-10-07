@@ -91,7 +91,7 @@ function ContactPage() {
                   </div>
 
                   <div className="mt-8 border-t border-line pt-4 text-xs text-ink/65">
-                    <span>Mọi thông tin gửi qua biểu mẫu đều được bảo mật tuyệt đối.</span>
+                    <span>Thông tin chỉ dùng để phản hồi và chỉ quản trị viên được phép truy cập.</span>
                   </div>
                 </section>
               </TiltStage>

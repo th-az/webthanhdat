@@ -1,14 +1,16 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, FolderGit2, Layers, Sparkles } from "lucide-react";
 import { SiteLayout } from "@/components/site-layout";
 import { Reveal, TiltStage } from "@/components/motion";
-import { projects } from "@/lib/site";
+import { listPublishedProjects } from "@/lib/admin";
 
 export const Route = createFileRoute("/projects/$projectId")({
+  loader: () => listPublishedProjects(),
   component: ProjectDetailPage,
 });
 
 function ProjectDetailPage() {
+  const projects = Route.useLoaderData();
   const { projectId } = Route.useParams();
   const project = projects.find((p) => p.id === projectId);
 
@@ -78,6 +80,30 @@ function ProjectDetailPage() {
                 </div>
               </div>
 
+              {project.video && (
+                <div className="border-t border-line bg-ink p-4 md:p-6">
+                  {/\.(mp4|webm|ogg)(\?.*)?$/i.test(project.video) ? (
+                    <video
+                      src={project.video}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="mx-auto max-h-[560px] w-full bg-black"
+                    />
+                  ) : (
+                    <a
+                      href={project.video}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex min-h-11 items-center gap-2 bg-paper px-4 font-display text-xs font-bold tracking-[0.16em] text-wine hover:bg-cream"
+                    >
+                      <ExternalLink className="size-4" />
+                      XEM VIDEO GIỚI THIỆU
+                    </a>
+                  )}
+                </div>
+              )}
+
               {/* Information body */}
               <div className="p-6 md:p-10">
                 <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
@@ -92,14 +118,14 @@ function ProjectDetailPage() {
                       </p>
                     </div>
 
-                    {(project as any).features && (
+                    {project.features.length > 0 && (
                       <div className="border-t border-line pt-6">
                         <h3 className="font-display text-xl font-bold tracking-wide text-wine flex items-center gap-2">
                           <Sparkles className="size-5" />
                           <span>TÍNH NĂNG NỔI BẬT & ĐIỂM NHẤN</span>
                         </h3>
                         <ul className="mt-4 space-y-3">
-                          {((project as any).features as string[]).map((feature, idx) => (
+                          {project.features.map((feature, idx) => (
                             <li key={idx} className="flex items-start gap-3 text-sm leading-relaxed text-ink/80">
                               <CheckCircle2 className="size-5 text-wine shrink-0 mt-0.5" />
                               <span>{feature}</span>
