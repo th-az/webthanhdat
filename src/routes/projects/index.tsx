@@ -5,23 +5,31 @@ import { PageHeader } from "@/components/page-header";
 import { ProjectDialog } from "@/components/project-dialog";
 import { SiteLayout } from "@/components/site-layout";
 import { Reveal, TiltStage } from "@/components/motion";
-import { projects, roadmap, type Project } from "@/lib/site";
+import { listPublishedProjects } from "@/lib/admin";
+import { roadmap, type Project } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/projects/")({
+  loader: () => listPublishedProjects(),
   component: ProjectsPage,
 });
 
 type Category = "all" | "ai" | "web" | "business";
 
 function ProjectsPage() {
+  const projects = Route.useLoaderData();
   const [filter, setFilter] = useState<Category>("all");
   const [activeProject, setActiveProject] = useState<Project | null>(null);
 
   const filteredProjects = projects.filter((p) => {
     if (filter === "all") return true;
-    return (p as any).category === filter;
+    return p.category === filter;
   });
+  const categoryCounts = {
+    ai: projects.filter((project) => project.category === "ai").length,
+    web: projects.filter((project) => project.category === "web").length,
+    business: projects.filter((project) => project.category === "business").length,
+  };
 
   return (
     <SiteLayout
@@ -66,7 +74,7 @@ function ProjectsPage() {
                     : "border border-cream/30 text-cream hover:bg-cream/10",
                 )}
               >
-                LOCAL AI (1)
+                LOCAL AI ({categoryCounts.ai})
               </button>
               <button
                 type="button"
@@ -78,7 +86,7 @@ function ProjectsPage() {
                     : "border border-cream/30 text-cream hover:bg-cream/10",
                 )}
               >
-                WEB CRAFT (3)
+                WEB CRAFT ({categoryCounts.web})
               </button>
               <button
                 type="button"
@@ -90,7 +98,7 @@ function ProjectsPage() {
                     : "border border-cream/30 text-cream hover:bg-cream/10",
                 )}
               >
-                BUSINESS (1)
+                BUSINESS ({categoryCounts.business})
               </button>
             </div>
           </div>
